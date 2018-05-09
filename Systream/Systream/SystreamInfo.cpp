@@ -13,18 +13,26 @@ SystreamInfo::~SystreamInfo()
 {
 }
 
-int SystreamInfo::GetSytMemory()
+void SystreamInfo::GetSytMemory()
 {
 	if (GlobalMemoryStatusEx(&memStatusex))
 	{
-		return memStatusex.dwMemoryLoad;
+		c_SysInfo.MemoryTotal = memStatusex.ullTotalPhys;
+		c_SysInfo.MemoryAvail = memStatusex.ullTotalPhys;
+		c_SysInfo.MemoryOcp = memStatusex.dwMemoryLoad;
 	}
-	return 0;
 }
 
-int SystreamInfo::GetAllCpu()
+void SystreamInfo::GetSysCpu()
 {
-	return 0;
+
+}
+
+
+
+void SystreamInfo::GetNetWork()
+{
+
 }
 
 bool SystreamInfo::Initialize()
@@ -43,7 +51,7 @@ bool SystreamInfo::Initialize()
 	return flag;
 }
 
-int SystreamInfo::GetCpuUserRate()
+void SystreamInfo::GetCpuUserRate()
 {
 	int nCPUUseRate = -1;
 	FILETIME ftIdle, ftKernel, ftUser;

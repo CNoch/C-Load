@@ -1,11 +1,12 @@
 #include "stdafx.h"
 #include "SystreamInfo.h"
-
+#include <sstream>
 
 SystreamInfo::SystreamInfo()
 {
 	memStatusex.dwLength = sizeof(MEMORYSTATUSEX);
 	Initialize();
+	
 }
 
 
@@ -13,19 +14,32 @@ SystreamInfo::~SystreamInfo()
 {
 }
 
-int SystreamInfo::GetSytMemory()
+void SystreamInfo::GetSytMemory()
 {
-	if (GlobalMemoryStatusEx(&memStatusex))
-	{
-		return memStatusex.dwMemoryLoad;
-	}
-	return 0;
+	GlobalMemoryStatusEx(&memStatusex);
+	m_Sysinfo.MemoryTotal = memStatusex.ullTotalPhys / 1024 / 1024;
+	m_Sysinfo.MemoryUsed = (memStatusex.ullTotalPhys - memStatusex.ullAvailPhys) / 1024 / 1024;
+	m_Sysinfo.MemoryOcp = memStatusex.dwMemoryLoad;
 }
 
-int SystreamInfo::GetAllCpu()
+void ConvertToString(System::String^ str, std::string& text)
 {
-	return 0;
+	//const char * chars = (const char*)(Marshal::StringToHGlobalAnsi(str)).ToPointer();
 }
+
+//bool To_string(String ^source, string &target)
+//{
+//	
+//}
+
+//string SystreamInfo::GetCpuUsageRateList()
+//{
+//	System::String ^ a = cpuUseRate->GetCPUEveryCoreUseRate();
+//	auto utf8 = Encoding::UTF8->GetBytes(a);
+//	auto chars = new char[utf8->Length + 1];
+//
+//	return NULL;
+//}
 
 bool SystreamInfo::Initialize()
 {
@@ -43,7 +57,7 @@ bool SystreamInfo::Initialize()
 	return flag;
 }
 
-int SystreamInfo::GetCpuUserRate()
+void SystreamInfo::GetCpuUserRate()
 {
 	int nCPUUseRate = -1;
 	FILETIME ftIdle, ftKernel, ftUser;
@@ -60,6 +74,11 @@ int SystreamInfo::GetCpuUserRate()
 		m_fOldCPUUserTime = fCPUUserTime;
 	}
 	return nCPUUseRate;
+}
+
+string SystreamInfo::GetCpuUsageRateList()
+{
+	return string();
 }
 
 double SystreamInfo::FileTimeToDouble(FILETIME & filetime)

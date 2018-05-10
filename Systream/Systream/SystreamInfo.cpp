@@ -2,11 +2,24 @@
 #include "SystreamInfo.h"
 #include <sstream>
 
+uint64_t FileTimeToInt64(const FILETIME &time)
+{
+	ULARGE_INTEGER tt;
+	tt.LowPart = time.dwLowDateTime;
+	tt.HighPart = time.dwHighDateTime;
+	return static_cast<int64_t>(tt.QuadPart);
+}
+
 SystreamInfo::SystreamInfo()
 {
+	m_Sysinfo = { 0 };
+	lastinbytes = 0;
+	lastoutbytes = 0;
+	pAdpterInfo = nullptr;
+	EnumAdapter();
 	memStatusex.dwLength = sizeof(MEMORYSTATUSEX);
-	Initialize();
-	
+	GetSystemTimes(&m_fOldCPUKernelTime, &m_fOldCPUIdleTime, &m_fOldCPUUserTime);
+	Sleep(1000);
 }
 
 
@@ -14,7 +27,7 @@ SystreamInfo::~SystreamInfo()
 {
 }
 
-void SystreamInfo::GetSytMemory()
+void SystreamInfo::GetSysMemory()
 {
 	GlobalMemoryStatusEx(&memStatusex);
 	m_Sysinfo.MemoryTotal = memStatusex.ullTotalPhys / 1024 / 1024;
@@ -22,66 +35,124 @@ void SystreamInfo::GetSytMemory()
 	m_Sysinfo.MemoryOcp = memStatusex.dwMemoryLoad;
 }
 
-void ConvertToString(System::String^ str, std::string& text)
+
+void SystreamInfo::GetSysCpu()
 {
-	//const char * chars = (const char*)(Marshal::StringToHGlobalAnsi(str)).ToPointer();
-}
+	FILETIME idleTime;
+	FILETIME kernelTime;
+	FILETIME userTime;
+	GetSystemTimes(&kernelTime, &idleTime, &userTime);
+	int64_t idle = FileTimeToInt64(idleTime) - FileTimeToInt64(m_fOldCPUIdleTime);
+	int64_t kernel = FileTimeToInt64(kernelTime) - FileTimeToInt64(m_fOldCPUKernelTime);
+	int64_t user = FileTimeToInt64(userTime) - FileTimeToInt64(m_fOldCPUUserTime);
 
-//bool To_string(String ^source, string &target)
-//{
-//	
-//}
-
-//string SystreamInfo::GetCpuUsageRateList()
-//{
-//	System::String ^ a = cpuUseRate->GetCPUEveryCoreUseRate();
-//	auto utf8 = Encoding::UTF8->GetBytes(a);
-//	auto chars = new char[utf8->Length + 1];
-//
-//	return NULL;
-//}
-
-bool SystreamInfo::Initialize()
-{
-	FILETIME ftIdle, ftKernel, ftUser;
-	double m_fOldCPUIdleTime;
-	double m_fOldCPUKernelTime;
-	double m_fOldCPUUserTime;
-	bool flag = false;
-	if (flag = GetSystemTimes(&ftIdle, &ftKernel, &ftUser))
+	m_fOldCPUIdleTime = idleTime;
+	m_fOldCPUKernelTime = kernelTime;
+	m_fOldCPUUserTime = userTime;
+	if (kernel + user == 0)
 	{
-		m_fOldCPUIdleTime = FileTimeToDouble(ftIdle);
-		m_fOldCPUKernelTime = FileTimeToDouble(ftKernel);
-		m_fOldCPUUserTime = FileTimeToDouble(ftUser);
+		return;
 	}
-	return flag;
+	//(总时间 - 空闲时间)/总时间 = CPU使用率
+	int64_t cpu = (kernel + user - idle) * 100 / (kernel + user);
+	m_Sysinfo.Cpu = cpu;
 }
 
-void SystreamInfo::GetCpuUserRate()
+void SystreamInfo::GetSysNetWork()
 {
-	int nCPUUseRate = -1;
-	FILETIME ftIdle, ftKernel, ftUser;
-	if (GetSystemTimes(&ftIdle, &ftKernel, &ftUser))
+	DWORD in_bytes = 0;
+	DWORD out_bytes = 0;
+	for (auto i = 0;i < m_Index_Net.size();++i)
 	{
-		double fCPUIdleTime = FileTimeToDouble(ftIdle);
-		double fCPUKernelTime = FileTimeToDouble(ftKernel);
-		double fCPUUserTime = FileTimeToDouble(ftUser);
-		nCPUUseRate = (int)(100.0 - (fCPUIdleTime - m_fOldCPUIdleTime)
-			/ (fCPUKernelTime - m_fOldCPUKernelTime + fCPUUserTime - m_fOldCPUUserTime)
-			*100.0);
-		m_fOldCPUIdleTime = fCPUIdleTime;
-		m_fOldCPUKernelTime = fCPUKernelTime;
-		m_fOldCPUUserTime = fCPUUserTime;
+		NetInfo ninfo = { 0 };
+		getNetWorkStatus(i, in_bytes, out_bytes);
+		map<int, DWORD>::iterator iDI = m_Id_Index.find(i);
+		if (iDI != m_Id_Index.end())
+		{
+			map<DWORD, NetInfo>::iterator it = m_Index_Net.find(iDI->second);
+			if (it != m_Index_Net.end())
+			{
+				m_Sysinfo.NetWork[it->first].Mac = it->second.Mac;
+				m_Sysinfo.NetWork[it->first].RecvBytes = in_bytes - it->second.RecvBytes;
+				m_Sysinfo.NetWork[it->first].SendBytes = out_bytes - it->second.SendBytes;
+				it->second.SendBytes = out_bytes;
+			}
+		}
 	}
-	return nCPUUseRate;
 }
 
-string SystreamInfo::GetCpuUsageRateList()
+bool SystreamInfo::EnumAdapter()
 {
-	return string();
+	ULONG uloutBufLen = 0;
+	DWORD dwRetVal = 0;
+	int Id = 0;
+	pAdpterInfo = (IP_ADAPTER_INFO *)malloc(sizeof(IP_ADAPTER_INFO));
+	uloutBufLen = sizeof(IP_ADAPTER_INFO);
+	if (ERROR_SUCCESS != GetAdaptersInfo(pAdpterInfo,&uloutBufLen))
+	{
+		free(pAdpterInfo);
+		pAdpterInfo = (IP_ADAPTER_INFO *)malloc(uloutBufLen);
+	}
+	if (ERROR_SUCCESS != GetAdaptersInfo(pAdpterInfo,&uloutBufLen))
+	{
+		return false;
+	}
+	PIP_ADAPTER_INFO pAdapter = pAdpterInfo;
+	while (pAdapter)
+	{
+		char *Mac = new char[20]();
+		int len = 0;
+		for (auto i = 0;i<pAdapter->AddressLength;i++)
+		{
+			char *Mad = new char[3]();
+			if (i == pAdapter->AddressLength - 1)
+			{
+				sprintf_s(Mad, sizeof(Mad), "%.2X", (int)pAdapter->Address[i]);
+				memcpy(Mac + len, Mad, sizeof(Mad));
+				break;
+			}
+			sprintf_s(Mad, sizeof(Mad), "%.2X-", (int)pAdapter->Address[i]);
+			memcpy(Mac + len, Mad, sizeof(Mad));
+			len += strlen(Mad);
+		}
+		NetInfo NI = { 0 };
+		NI.Mac = Mac;
+		NI.RecvBytes = 0;
+		NI.SendBytes = 0;
+		m_Index_Net[pAdapter->Index] = NI;
+		m_Id_Index[Id] = pAdapter->Index;
+		pAdapter = pAdapter->Next;
+		Id++;
+	}
+	return true;
 }
 
-double SystreamInfo::FileTimeToDouble(FILETIME & filetime)
+bool SystreamInfo::getNetWorkStatus(ULONG i, DWORD &inBytes, DWORD &outBytes)
 {
-	return (double)(filetime.dwHighDateTime * 4.294967296E9) + (double)filetime.dwLowDateTime;
+	MIB_IFROW MibIfRow;
+	map<int, DWORD>::iterator iDI = m_Id_Index.find(i);
+	if (iDI != m_Id_Index.end())
+	{
+		map<DWORD, NetInfo>::iterator it = m_Index_Net.find(iDI->second);
+		if (it != m_Index_Net.end())
+		{
+			MibIfRow.dwIndex = it->first;
+			if (GetIfEntry(&MibIfRow) == NO_ERROR)
+			{
+				inBytes = MibIfRow.dwInOctets;
+				outBytes = MibIfRow.dwOutOctets;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void SystreamInfo::GetSysInfo(SysInfo & sysinfo)
+{
+	//memset(&sysinfo, 0, sizeof(sysinfo));
+	GetSysCpu();
+	GetSysMemory();
+	GetSysNetWork();
+	sysinfo = m_Sysinfo;
 }

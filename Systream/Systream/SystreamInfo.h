@@ -5,6 +5,7 @@
 #include <minwindef.h>
 #include <iphlpapi.h>
 #include <map>
+#include <stdint.h>
 #pragma comment(lib,"Iphlpapi")
 using namespace std;
 
@@ -37,28 +38,29 @@ public:
 	SystreamInfo();
 	~SystreamInfo();
 
-	//获取内存使用率
-	void GetSytMemory();
-	//获取总CPU使用率
-	void GetCpuUserRate();
-	//获取单核CPU使用率
-	string GetCpuUsageRateList();
-	//获取总网络速率
-	//获取单个网卡网络速率
 
-	//CPU功能函数
-	bool Initialize();
-	double FileTimeToDouble(FILETIME &filetime);
+	void GetSysMemory();
+	void GetSysCpu();
+	void GetSysNetWork();
+	bool EnumAdapter();//获取网卡信息
+	bool getNetWorkStatus(ULONG i, DWORD &inBytes, DWORD &outBytes);
 
+	void GetSysInfo(SysInfo & sysinfo);
+
+public:
+	IP_ADAPTER_INFO * pAdpterInfo;
+	DWORD lastinbytes;
+	DWORD lastoutbytes;
 private:
 	MEMORYSTATUSEX memStatusex;
-	double m_fOldCPUIdleTime;
-	double m_fOldCPUKernelTime;
-	double m_fOldCPUUserTime;
+	FILETIME m_fOldCPUIdleTime;
+	FILETIME m_fOldCPUKernelTime;
+	FILETIME m_fOldCPUUserTime;
 
 	//CShapeCPUUseRate ^ cpuUseRate = gcnew CShapeCPUUseRate;
 	//gcroot<CShapeCPUUseRate^> cpuUseRate;
 	SysInfo m_Sysinfo;
-
+	map<int, DWORD> m_Id_Index;
+	map<DWORD, NetInfo> m_Index_Net;
 };
 
